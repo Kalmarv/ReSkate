@@ -2,13 +2,16 @@
 
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
 
 // Thunderstore (thunderstore.io/c/reskate): the package listing the launcher's
-// Mods browser shows. No network here; gui_mods_browse.cpp fetches with
-// launcher_update::http_get. ReSkate packages have no dependencies.
+// Mods browser shows, and the one package a multiplayer host's map comes from
+// (Extension/Assets/map_downloads.h). No network here; gui_mods_browse.cpp
+// fetches with launcher_update::http_get, the runtime with https::get.
+// ReSkate packages have no dependencies.
 //
 // A ReSkate package is a mod folder zipped with Thunderstore's manifest.json,
 // icon.png and README.md at the top, and installs as Mods/<Namespace-Name>.
@@ -65,6 +68,22 @@ std::vector<std::wstring> parse_index(std::string_view json);
 // Unpacks a gzip stream (the index and its chunks), refusing output over
 // `limit` bytes. Input that is not gzip comes back unchanged.
 std::string gunzip(std::string_view data, std::size_t limit);
+
+// One package without the listing: /api/experimental/package/<Namespace>/<Name>/
+// answers with the communities that list it (parse_standing), and .../<version>/
+// with that version (parse_release). Both are small; the listing is megabytes.
+std::wstring package_url(std::string_view owner, std::string_view name);
+std::wstring version_url(std::string_view owner, std::string_view name, std::string_view version);
+struct Standing {
+    std::vector<std::string> communities;   // the community slugs that list it
+    bool deprecated{}, nsfw{};              // nsfw: in any of them
+    bool listed_in(std::string_view community) const;
+};
+// Throws when the answer is not a package.
+Standing parse_standing(std::string_view json);
+// The version package_url's version answer describes; nothing when it is inactive
+// or malformed. It carries no file_size.
+std::optional<Version> parse_release(std::string_view json);
 
 // Below zero, zero or above zero as `a` is older, the same or newer than `b`.
 // Components compare as numbers ("1.10.0" is newer than "1.9.0").

@@ -135,6 +135,41 @@ std::wstring community_page(std::string_view community) {
     return widen(std::string(site) + "/c/" + std::string(community) + "/");
 }
 
+std::wstring package_url(std::string_view owner, std::string_view name) {
+    return widen(std::string(site) + "/api/experimental/package/" + std::string(owner) + "/" + std::string(name) + "/");
+}
+
+std::wstring version_url(std::string_view owner, std::string_view name, std::string_view version) {
+    return widen(std::string(site) + "/api/experimental/package/" + std::string(owner) + "/" + std::string(name) + "/" +
+                 std::string(version) + "/");
+}
+
+bool Standing::listed_in(std::string_view community) const {
+    return std::find(communities.begin(), communities.end(), community) != communities.end();
+}
+
+Standing parse_standing(std::string_view json) {
+    const auto root = Json::parse(json, JsonLimits{1024 * 1024, 8, 65536});
+    if (!root.is_object() || !root.contains("full_name")) fail("Thunderstore did not describe a package.");
+    Standing standing;
+    standing.deprecated = flag(root, "is_deprecated");
+    if (root.contains("community_listings") && root.at("community_listings").is_array())
+        for (const auto& listing : root.at("community_listings")) {
+            if (!listing.is_object()) continue;
+            if (auto slug = text(listing, "community"); !slug.empty()) standing.communities.push_back(std::move(slug));
+            standing.nsfw |= flag(listing, "has_nsfw_content");
+        }
+    return standing;
+}
+
+std::optional<Version> parse_release(std::string_view json) {
+    try {
+        return parse_version(Json::parse(json, JsonLimits{1024 * 1024, 8, 65536}));
+    } catch (const std::exception&) {
+        return std::nullopt;
+    }
+}
+
 std::string Package::title() const {
     auto result = name;
     std::replace(result.begin(), result.end(), '_', ' ');

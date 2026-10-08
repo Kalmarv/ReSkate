@@ -132,6 +132,31 @@ int main() {
           "The listing index URL");
     check(thunderstore::community_page("reskate") == L"https://thunderstore.io/c/reskate/", "The community page URL");
 
+    // ------------------------------------------------ one package
+    check(thunderstore::package_url("Zee", "Desert_Springs") ==
+              L"https://thunderstore.io/api/experimental/package/Zee/Desert_Springs/", "The package URL");
+    check(thunderstore::version_url("Zee", "Desert_Springs", "2.0.0") ==
+              L"https://thunderstore.io/api/experimental/package/Zee/Desert_Springs/2.0.0/", "The version URL");
+    const auto standing = thunderstore::parse_standing(R"({"namespace": "Zee", "name": "Desert_Springs",
+        "full_name": "Zee-Desert_Springs", "is_deprecated": false, "latest": {},
+        "community_listings": [{"has_nsfw_content": false, "community": "reskate", "review_status": "unreviewed"},
+                               {"has_nsfw_content": true, "community": "other"}]})");
+    check(standing.listed_in("reskate") && standing.listed_in("other") && !standing.listed_in("riskofrain2"),
+          "A package's communities");
+    check(standing.nsfw && !standing.deprecated, "NSFW in any community counts");
+    check(!error_of([] { thunderstore::parse_standing(R"({"detail": "Not found."})"); }).empty(), "A missing package throws");
+    const auto release = thunderstore::parse_release(R"({"namespace": "Zee", "name": "Desert_Springs",
+        "version_number": "2.0.0", "full_name": "Zee-Desert_Springs-2.0.0", "description": "Sand",
+        "download_url": "https://thunderstore.io/package/download/Zee/Desert_Springs/2.0.0/", "is_active": true})");
+    check(release && release->number == "2.0.0" && release->download_url.ends_with("/2.0.0/") && !release->file_size,
+          "A version's download");
+    check(!thunderstore::parse_release(R"({"version_number": "2.0.0", "is_active": false,
+        "download_url": "https://thunderstore.io/package/download/Zee/Desert_Springs/2.0.0/"})"), "An inactive version");
+    check(!thunderstore::parse_release(R"({"version_number": "2.0.0",
+        "download_url": "http://thunderstore.io/package/download/Zee/Desert_Springs/2.0.0/"})"), "A plain HTTP download");
+    check(!thunderstore::parse_release(R"({"detail": "Not found."})"), "A missing version");
+    check(!thunderstore::parse_release("not json"), "Not JSON");
+
     if (failures) {
         std::cerr << failures << " Thunderstore check(s) failed\n";
         return 1;

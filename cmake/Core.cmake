@@ -118,6 +118,12 @@ if(WIN32)
     # HTTPS downloads shared by the park preview and content cache packs.
     add_library(dingosdk_https STATIC Engine/Vfs/https_download.cpp)
     target_link_libraries(dingosdk_https PUBLIC winhttp)
+
+    # Installing a mod from a .zip, and Thunderstore's package data: the launcher's Mods page,
+    # and the runtime downloading the map a multiplayer host is on.
+    add_library(dingosdk_mod_install STATIC Launcher/mod_manager.cpp Launcher/thunderstore.cpp)
+    target_link_libraries(dingosdk_mod_install PUBLIC dingosdk_mod_list
+        PRIVATE dingosdk_json dingosdk_launcher_support dingosdk_miniz shell32)
 endif()
 
 # The live game's content cache: the launcher installs it, the runtime reads
