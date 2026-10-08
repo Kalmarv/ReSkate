@@ -1,4 +1,5 @@
 #include "mod_list.h"
+#include "mod_package.h"
 #include "Engine/Game/Build/supported_build.h"
 
 #include "Engine/Core/Json/json.h"
@@ -114,6 +115,8 @@ void read_mod_info(Mod& mod, std::vector<std::string>& notes) {
         mod.author = string_field(root, "author", 64);
         auto version = string_field(root, manifest ? "version_number" : "version", 32);
         if (version.empty()) version = string_field(root, manifest ? "version" : "version_number", 32);
+        if (manifest && root.contains("version_number") && root.at("version_number").is_string())
+            if (const auto id = package_of(mod.name, root.at("version_number").string())) mod.package = id->text();
         if (!version.empty()) mod.version = std::move(version);
         mod.description = string_field(root, "description", 1024);
     } catch (const std::exception& failure) {

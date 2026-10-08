@@ -42,6 +42,10 @@ struct Mod {
     // Presentation, from manifest.json (or reskate-mod.json). `title` falls back to the folder
     // name and `version` to the one reskate-build.json records.
     std::string title, author, version, description;
+    // The Thunderstore package it was installed from, "Namespace-Name-1.2.3" (mod_package.h):
+    // set when the folder is named Namespace-Name and manifest.json gives a version_number.
+    // Players who lack one of its maps can download that package.
+    std::string package;
     // What built the mod and when, from reskate-build.json; empty when the mod
     // predates that file or was made by another tool.
     std::string tool, built;

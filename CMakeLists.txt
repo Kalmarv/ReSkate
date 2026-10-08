@@ -96,6 +96,9 @@ if(DINGOSDK_BUILD_MULTIPLAYER_TESTS)
     add_executable(dingosdk_word_filter_tests Engine/Core/Text/Test/word_filter_tests.cpp)
     target_link_libraries(dingosdk_word_filter_tests PRIVATE dingosdk_word_filter)
     add_test(NAME word_filter COMMAND dingosdk_word_filter_tests)
+    add_executable(dingosdk_mod_package_tests Engine/Vfs/Test/mod_package_tests.cpp)
+    target_include_directories(dingosdk_mod_package_tests PRIVATE "${PROJECT_SOURCE_DIR}")
+    add_test(NAME mod_package COMMAND dingosdk_mod_package_tests)
     add_executable(dingosdk_multiplayer_bandwidth_tests
         Extension/Multiplayer/Test/bandwidth_tests.cpp Extension/Multiplayer/Net/protocol.cpp Extension/Multiplayer/Remote/playback_buffers.cpp
         Extension/Multiplayer/Net/wire_codec.cpp Extension/Multiplayer/Net/delta_codec.cpp)
