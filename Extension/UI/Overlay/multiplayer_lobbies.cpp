@@ -1,8 +1,10 @@
 #include "multiplayer_menu_internal.h"
 #include "Extension/UI/skate_theme.h"
+#include "Engine/Vfs/mod_package.h"
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <format>
 #include <Windows.h>
 
 namespace dingosdk::overlay::menu::multiplayer_detail {
@@ -183,7 +185,81 @@ void direct_join(SkateMenu &menu, const MultiplayerModel &mp) {
         }
     }
 }
+std::string megabytes(std::uint64_t bytes) {
+    return bytes >= 1024ull * 1024 * 1024 ? std::format("{:.2f} GB", static_cast<double>(bytes) / (1024.0 * 1024 * 1024))
+                                          : std::format("{:.1f} MB", static_cast<double>(bytes) / (1024.0 * 1024));
+}
 } // namespace
+void map_download_card(SkateMenu &menu, const MultiplayerModel &mp) {
+    using Stage = MapDownloadStage;
+    const auto &download = mp.map_download;
+    if (download.stage == Stage::idle) return;
+    const auto send = [&](const char *action) { send_private(menu, action, {}, menu.multiplayer_join_password, false); };
+    const auto version = mods::parse_package(download.package);
+    const auto from = version ? download.title + " v" + version->version + " by " + version->owner : download.package;
+    switch (download.stage) {
+    case Stage::checking:
+        begin_card(menu, "map-download", "MAP NOT INSTALLED");
+        note(("The " + download.host + " is on " + download.map + ". Looking for it on Thunderstore...").c_str());
+        if (ImGui::Button("Cancel")) send("map-download-cancel");
+        break;
+    case Stage::offered: {
+        begin_card(menu, "map-download", "DOWNLOAD THE MAP?");
+        ImGui::TextWrapped("The %s is on %s, which is not installed on this PC.", download.host.c_str(), download.map.c_str());
+        ImGui::PushFont(menu.bold);
+        ImGui::TextWrapped("%s", from.c_str());
+        ImGui::PopFont();
+        if (download.same_version)
+            note("It is in your Mods folder already, switched off. Joining switches it on.");
+        else
+            note(("From the ReSkate community on Thunderstore" + (download.size ? ", " + megabytes(download.size) : std::string()) +
+                  (download.installed.empty() ? "." : ". It replaces your v" + download.installed + ", which goes to the Recycle Bin."))
+                     .c_str());
+        if (!download.description.empty()) note(download.description.c_str());
+        if (download.deprecated) warn("Its author marked it deprecated on Thunderstore.");
+        if (download.nsfw) warn("It is marked NSFW on Thunderstore.");
+        note("Only install mods you trust.");
+        if (primary_button(menu, download.same_version ? "TURN ON AND JOIN" : "DOWNLOAD AND JOIN")) send("map-download");
+        if (ImGui::Button("Not now")) send("map-download-cancel");
+        break;
+    }
+    case Stage::downloading:
+    case Stage::installing:
+    case Stage::applying: {
+        begin_card(menu, "map-download", "GETTING THE MAP");
+        ImGui::TextWrapped("%s", from.c_str());
+        if (download.stage == Stage::downloading) {
+            const float done = download.size ? static_cast<float>(static_cast<double>(download.received) / static_cast<double>(download.size)) : 0.f;
+            const auto label = download.size ? megabytes(download.received) + " of " + megabytes(download.size) : megabytes(download.received);
+            ImGui::ProgressBar(std::clamp(done, 0.f, 1.f), ImVec2(-FLT_MIN, 0), ("Downloading  " + label).c_str());
+        } else if (download.stage == Stage::installing) {
+            ImGui::ProgressBar(std::clamp(download.progress, 0.f, 1.f), ImVec2(-FLT_MIN, 0), "Installing");
+        } else {
+            note("Applying mods. You join again once they are ready.");
+        }
+        ImGui::BeginDisabled(download.stage == Stage::applying);
+        if (ImGui::Button("Cancel")) send("map-download-cancel");
+        ImGui::EndDisabled();
+        break;
+    }
+    case Stage::done:
+        begin_card(menu, "map-download", download.restart ? "MAP INSTALLED" : "MAP INSTALLED, JOINING");
+        ImGui::TextWrapped("%s", from.c_str());
+        note(download.detail.c_str());
+        if (ImGui::Button("Close")) send("map-download-cancel");
+        break;
+    case Stage::failed:
+        begin_card(menu, "map-download", "MAP NOT DOWNLOADED");
+        if (!download.map.empty())
+            ImGui::TextWrapped("The %s is on %s, which is not installed on this PC.", download.host.c_str(), download.map.c_str());
+        warn(download.detail.c_str());
+        if (ImGui::Button("Close")) send("map-download-cancel");
+        break;
+    case Stage::idle:
+        return;
+    }
+    end_card();
+}
 void password_popup(SkateMenu &menu, const Model &model) {
     constexpr auto title = "Lobby password###multiplayer-password";
     if (menu.multiplayer_password_popup_requested) {

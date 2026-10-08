@@ -15,6 +15,8 @@ void cell_text(const std::string &text);
 // LOBBIES tab and its password prompt (multiplayer_lobbies.cpp).
 void join_page(SkateMenu &menu, const Model &model, const CallbacksV3 &callbacks);
 void password_popup(SkateMenu &menu, const Model &model);
+// The map a join stopped for, offered from Thunderstore, above every tab while there is one.
+void map_download_card(SkateMenu &menu, const MultiplayerModel &mp);
 // SESSION and VOICE tabs (multiplayer_session.cpp).
 void session_page(SkateMenu &menu, const Model &model);
 // BANS tab and the Ban button's confirmation (multiplayer_session.cpp).

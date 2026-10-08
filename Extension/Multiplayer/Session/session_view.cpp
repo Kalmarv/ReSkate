@@ -1,4 +1,5 @@
 #include "session_internal.h"
+#include "Extension/Assets/map_downloads.h"
 #include "Engine/Game/World/world_names.h"
 #include "Extension/Multiplayer/Hud/native_player_ui.h"
 #include "Extension/Multiplayer/Remote/native_audio.h"
@@ -286,6 +287,7 @@ void publish(Session &s, const NativeFrame *local) {
             if (row != view.lobbies.end() && row->friends.size() < 16) row->friends.push_back(player.name.empty() ? std::string("A friend") : player.name);
         }
     view.status = s.status;
+    view.map_download = map_downloads::view();
     view.native_status = s.native_status;
     view.audio_captured = captured_audio_frames();
     each_peer([&] {

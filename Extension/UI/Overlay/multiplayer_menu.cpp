@@ -504,6 +504,7 @@ void multiplayer_page(SkateMenu &menu, const Model &model, const CallbacksV3 &ca
     const bool has_session = mp.active || mp.lobby_joining;
     if (has_session && !menu.multiplayer_session_seen) menu.multiplayer_tab = multiplayer_session_tab;
     menu.multiplayer_session_seen = has_session;
+    map_download_card(menu, mp);
     category_tabs(menu, menu.multiplayer_tab, {"SERVERS", has_session ? "SESSION" : "HOST", "VOICE", "BANS"},
                   "multiplayer-categories");
     if (menu.multiplayer_tab != multiplayer_voice_tab) menu.voice_bind_capture = 0;

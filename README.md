@@ -73,6 +73,9 @@ The menu and console keys can be changed in the launcher's Settings.
 - Install mods from the launcher's **MODS** page: browse Thunderstore, or drag a `.zip` or folder onto the
   window.
 - In game, the **MODS** tab of the ReSkate menu (**Insert**) turns mods on and off and applies the changes.
+- Joining a host or server whose map you don't have: when its map mod came from Thunderstore, the
+  **MULTIPLAYER** page of the ReSkate menu offers to download it. Accept, and it is installed, applied and
+  you join again. Nothing downloads without your OK, and only from the ReSkate community on Thunderstore.
 - Mods are checked against the game build they were made for. Outdated mods, or mods that can't be merged
   cleanly, are left out with a message naming them, and the rest still load.
 - A mod that adds songs can give them their own playlist in the game's music screen with a

@@ -20,6 +20,7 @@
 #include "Extension/Skater/physics_tuning.h"
 #include "Extension/Multiplayer/Remote/remote_collision.h"
 #include "Engine/Core/Log/logging.h"
+#include "Extension/Assets/map_downloads.h"
 #include "Engine/Core/Text/word_filter.h"
 #include "Engine/Game/Multiplayer/session_tools.h"
 #include "Engine/Game/UI/game_view.h"
@@ -740,6 +741,10 @@ bool prepare_join_map(Session &s, bool ready, std::string_view current, MapLoade
         s.awaiting_map = false;
         s.last_hello = 0;
         s.status = s.travelling ? "Your map is ready. Waiting for the host..." : "Host map ready. Joining the session...";
+        if (s.rejoin) { // the downloaded map loaded
+            s.rejoin.reset();
+            map_downloads::dismiss();
+        }
         return true;
     }
     if (!loader) {
@@ -753,8 +758,21 @@ bool prepare_join_map(Session &s, bool ready, std::string_view current, MapLoade
         if (result == MapLoadResult::missing) {
             const auto name = s.map_label.empty() ? world_level_name(world_destination_asset(s.join_destination)) : s.map_label;
             const char *who = dedicated_host(s) ? "server" : "host";
-            s.leave_notice = (s.travelling ? std::string("The ") + who + " moved to " : std::string("The ") + who + " is on ") +
-                             name + ", which is not installed on this PC. Install its map mod and join again.";
+            const auto missing = (s.travelling ? std::string("The ") + who + " moved to " : std::string("The ") + who + " is on ") +
+                                 name + ", which is not installed on this PC.";
+            // The host named the Thunderstore package the map comes from: offer it, and once the
+            // player has installed it, join the same host again (rejoin_after_download).
+            const bool tried = s.rejoin && s.rejoin->tried && s.rejoin->package == s.map_package;
+            if (!s.map_package.empty() && !tried && map_downloads::offer(s.map_package, name, who)) {
+                Rejoin again{s.host_id, s.secret, s.password, s.joined_public_lobby, s.map_package};
+                stop(s, missing + " Looking for it on Thunderstore...");
+                s.rejoin = std::move(again);
+                return false;
+            }
+            if (tried) map_downloads::dismiss();
+            s.rejoin.reset();
+            s.leave_notice = missing + (tried ? " Its mod was installed, but the game did not find the map: restart the game, then join again."
+                                              : " Install its map mod and join again.");
             stop(s, s.leave_notice);
             return false;
         }
@@ -766,6 +784,29 @@ bool prepare_join_map(Session &s, bool ready, std::string_view current, MapLoade
         s.status = detail.empty() ? "Loading the host's map..." : std::move(detail);
     }
     return false;
+}
+// A join that stopped for a map this PC lacked: once map_downloads has installed and applied the
+// package, join the same host again, with the same password.
+void rejoin_after_download(Session &s) {
+    if (!s.rejoin || s.mode != Mode::off) return;
+    if (map_downloads::view().stage == map_downloads::Stage::idle) { // dismissed
+        s.rejoin.reset();
+        return;
+    }
+    if (!map_downloads::take_rejoin()) return;
+    auto again = *s.rejoin;
+    s.rejoining = true;
+    command("join", format_invite({again.host, again.secret}));
+    s.rejoining = false;
+    if (s.mode != Mode::join) {
+        s.rejoin.reset(); // the status says why
+        return;
+    }
+    s.password = again.password;
+    s.joined_public_lobby = again.lobby;
+    again.tried = true;
+    s.rejoin = std::move(again);
+    publish(s);
 }
 void tick(std::uintptr_t base, std::uintptr_t client, bool ready, std::string_view map_name, MapLoader loader) {
     auto &s = session();
@@ -813,6 +854,8 @@ void tick(std::uintptr_t base, std::uintptr_t client, bool ready, std::string_vi
             erase_password(s.lobby_password);
         expire_remote_collision(base, now_us());
         if (s.mode == Mode::off) {
+            rejoin_after_download(s);
+            if (s.mode != Mode::off) return; // joining again: the next frame runs the session
             physics_tuning::release(base); // the player's own tuning again after a session
             set_session_tuning_enforced(false);
             relay_throwdowns(s, ready);

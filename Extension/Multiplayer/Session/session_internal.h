@@ -142,6 +142,15 @@ struct PrivateRequest {
     std::uint64_t queued{};
     ~PrivateRequest() { erase_password(password); }
 };
+// A join that stopped because this PC lacks the host's map, while map_downloads installs the
+// package the host named: what joining the same host again takes (session.cpp).
+struct Rejoin {
+    std::uint64_t host{}, secret{};
+    std::optional<PasswordKey> password;
+    std::uint64_t lobby{}; // joined_public_lobby
+    std::string package;
+    bool tried{}; // joined again after installing it: if the map is still missing, say so instead
+};
 struct Session {
     VoiceChat voice;
     VoiceSettings voice_settings;
@@ -222,6 +231,8 @@ struct Session {
     // Joining: the Thunderstore package the host named for join_destination (may be empty).
     // Hosting: the package of the map being hosted, looked up for map_package_for (hosted_map_package).
     std::string map_package, map_package_for;
+    std::optional<Rejoin> rejoin;
+    bool rejoining{}; // command("join") is joining again for `rejoin`
     std::string leave_notice;                 // take_leave_notice()
     std::uint64_t joined_public_lobby{};
     std::array<Peer, max_remote_players> peers;

@@ -1,5 +1,6 @@
 #include "session_internal.h"
 #include "Extension/Multiplayer/Steam/steam_social.h"
+#include "Extension/Assets/map_downloads.h"
 #include "Extension/Multiplayer/Hud/native_indicators.h"
 #include "Extension/Multiplayer/Hud/native_player_ui.h"
 #include "Extension/Multiplayer/Hud/custom_nametags.h"
@@ -625,7 +626,7 @@ bool queue_command(std::string_view action, std::string_view argument, std::stri
          action != "world-layer-sync" && action != "noclip-allow" && action != "nobail-allow" && action != "boosts-allow" &&
          action != "tuning-enforce" && action != "tp" &&
          action != "tpall" && action != "tphere" && action != "browse" &&
-         action != "server" && action != "party") ||
+         action != "server" && action != "party" && action != "map-download" && action != "map-download-cancel") ||
         argument.size() > (action == "host" || action == "host-config" ? 160U : action == "chat" ? 4 * multiplayer_chat_max_bytes
                            : action == "server" ? max_admin_text : 128U) ||
         password.size() > 64)
@@ -651,6 +652,28 @@ std::string command(std::string_view action, std::string_view argument, std::str
     input.password = password;
     auto &s = session();
     try {
+        // The map a join stopped for, offered from Thunderstore (Extension/Assets/map_downloads.h).
+        if (action == "map-download") {
+            s.status = map_downloads::accept();
+            publish(s);
+            return s.status;
+        }
+        if (action == "map-download-cancel") {
+            map_downloads::dismiss();
+            s.rejoin.reset();
+            s.status = "Map download cancelled.";
+            publish(s);
+            return s.status;
+        }
+        // Starting another session drops a pending join after a download, and an offer not taken.
+        if (!s.rejoining && (action == "host" || action == "join" || action == "join-lobby" ||
+                             action == "join-friend-lobby" || action == "echo")) {
+            s.rejoin.reset();
+            if (const auto stage = map_downloads::view().stage;
+                stage != map_downloads::Stage::downloading && stage != map_downloads::Stage::installing &&
+                stage != map_downloads::Stage::applying)
+                map_downloads::dismiss();
+        }
         // A dedicated server's admin changes the server's settings instead of
         // their own: the same menu actions, sent to the server. "server" sends
         // any server console command.

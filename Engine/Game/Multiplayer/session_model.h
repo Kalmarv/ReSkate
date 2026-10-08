@@ -130,8 +130,36 @@ struct MultiplayerBan {
     std::int64_t added{};      // Unix time
 };
 inline constexpr float player_distance_least = 50.f, player_distance_unlimited = 1000.f;
+// A map a join stopped for because this PC lacks it, offered from Thunderstore by the package
+// the host named (Extension/Assets/map_downloads.h).
+enum class MapDownloadStage {
+    idle,
+    checking,    // looking the package up on Thunderstore
+    offered,     // waiting for the player to accept
+    downloading,
+    installing,
+    applying,    // the live mod apply runs
+    done,        // installed; joining again, or a restart is needed (`restart`)
+    failed,      // `detail` says why
+};
+struct MapDownloadModel {
+    MapDownloadStage stage = MapDownloadStage::idle;
+    std::string map;         // the map's name for people
+    std::string host;        // "host" or "server"
+    std::string package;     // Namespace-Name-1.2.3
+    std::string title;       // the package's name as Thunderstore shows it
+    std::string description; // the version's description from Thunderstore
+    std::string installed;   // the version this PC has of the package, if any (it is replaced)
+    std::string detail;      // why it failed, or what happens next
+    std::uint64_t size{}, received{}; // size: 0 when Thunderstore named none
+    float progress{};        // installing: 0 to 1
+    bool deprecated{}, nsfw{};
+    bool restart{};          // done, but the game must restart to load it
+    bool same_version{};     // the package's version is already in Mods: only switched on and applied
+};
 struct MultiplayerModel {
     VoiceModel voice;
+    MapDownloadModel map_download;
     std::vector<MultiplayerBan> bans;
     unsigned tps = multiplayer_default_tps;
     ObjectPlacement object_placement = ObjectPlacement::everyone;

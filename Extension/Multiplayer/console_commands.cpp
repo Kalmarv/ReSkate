@@ -44,6 +44,8 @@ void register_multiplayer_commands(Commands &registry) {
                           Command{"chat-bubbles-history", "How many recent messages stack above a skater (1-8)"},
                           Command{"score-check", "Host: keep players whose mods change scoring or physics out of throwdowns and "
                                                  "coop challenges (on, off, toggle; on by default)"},
+                          Command{"map-download", "Download the map a join stopped for from Thunderstore, then join again"},
+                          Command{"map-download-cancel", "Drop the offered map download, or stop it"},
                           Command{"retry", "Retry remote skater creation after an error"},
                           Command{"test", "Test a Steam socket-pair round trip"},
                           Command{"status", "Show multiplayer connection and animation status"}}) {
