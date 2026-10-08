@@ -1,6 +1,7 @@
 #include "server_config.h"
 #include "Engine/Core/Json/json.h"
 #include "Engine/Core/Platform/path_text.h"
+#include "Engine/Vfs/mod_package.h"
 #include "Extension/Multiplayer/Net/protocol.h"
 #include "Engine/Game/World/world_names.h"
 #include <algorithm>
@@ -325,6 +326,25 @@ std::vector<ServerLevel> &level_list() {
     static std::vector<ServerLevel> value;
     return value;
 }
+// The Thunderstore package a mod folder was installed from (Engine/Vfs/mod_package.h): the
+// folder is named Namespace-Name and its manifest.json gives a version_number. Empty otherwise.
+std::string mod_package(const std::filesystem::path &folder) {
+    try {
+        const auto name = folder.filename().string();
+        std::ifstream in(folder / "manifest.json", std::ios::binary);
+        if (!in) return {};
+        std::stringstream text;
+        text << in.rdbuf();
+        auto body = text.str();
+        if (body.starts_with("\xef\xbb\xbf")) body.erase(0, 3); // editors that write a byte-order mark
+        const auto root = Json::parse(body);
+        if (!root.is_object() || !root.contains("version_number") || !root.at("version_number").is_string()) return {};
+        const auto id = mods::package_of(name, root.at("version_number").string());
+        return id ? id->text() : std::string{};
+    } catch (const std::exception &) {
+        return {};
+    }
+}
 } // namespace
 std::vector<std::string> load_levels(const std::filesystem::path &mods) {
     auto &list = level_list();
@@ -348,11 +368,12 @@ std::vector<std::string> load_levels(const std::filesystem::path &mods) {
             std::stringstream text;
             text << in.rdbuf();
             const auto root = Json::parse(text.str());
+            const auto package = mod_package(entry.path());
             for (const auto &level : root.at("levels")) {
                 const auto asset = level.at("asset").string();
                 const auto name = level.value("displayName", world_level_name(asset));
                 if (std::none_of(list.begin(), list.end(), [&](const auto &l) { return same(l.asset, asset); }))
-                    list.push_back({asset, name.empty() ? world_level_name(asset) : name});
+                    list.push_back({asset, name.empty() ? world_level_name(asset) : name, package});
             }
         } catch (const std::exception &e) {
             problems.push_back(entry.path().filename().string() + ": " + e.what());
@@ -417,6 +438,10 @@ std::string map_setting(std::string_view map) {
     }
     if (const auto *known = find_level(level)) return known->name;
     return std::string(level);
+}
+std::string map_package(std::string_view map) {
+    const auto *level = find_level(world_destination_asset(map_destination(map)));
+    return level ? level->package : std::string{};
 }
 std::string map_label(std::string_view map) {
     if (const auto *level = find_level(map)) return level->name;

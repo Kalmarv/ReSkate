@@ -219,6 +219,9 @@ struct Session {
     std::vector<std::string> server_map_pool; // admins: the pool's assets in rotation order (empty: every map)
     unsigned server_map_rotation{};           // minutes per map (0: off)
     std::string map_label;                    // the host's name for join_destination (may be empty)
+    // Joining: the Thunderstore package the host named for join_destination (may be empty).
+    // Hosting: the package of the map being hosted, looked up for map_package_for (hosted_map_package).
+    std::string map_package, map_package_for;
     std::string leave_notice;                 // take_leave_notice()
     std::uint64_t joined_public_lobby{};
     std::array<Peer, max_remote_players> peers;
@@ -419,6 +422,9 @@ bool send_packet(Session &s, std::uint64_t id, const Packet &p, bool reliable, b
                  std::span<const std::uint8_t> raw = {}, std::span<const std::uint8_t> wire = {});
 void send_required(Session &s, std::uint64_t id, const std::vector<std::uint8_t> &bytes);
 void send_world_state(Session &s, std::uint64_t now);
+// The Thunderstore package of the map this host is on (Mod::package), so a player without it can
+// download it; empty for the game's own maps and mods from elsewhere. Looked up once per map.
+const std::string &hosted_map_package(Session &s);
 void begin_host_world(Session &s, std::string_view destination, std::uint64_t now);
 void broadcast(Session &s, const Packet &packet, bool reliable, bool fresh, std::uint64_t now,
                std::uint64_t except = 0);

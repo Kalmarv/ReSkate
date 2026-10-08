@@ -932,6 +932,27 @@ void dedicated_server_codec() {
     auto unnamed = changed_map;
     unnamed.map_label.assign(max_member_name + 1, 'a');
     check(reject(unnamed), "An overlong map name encoded");
+    check(arrived->map_package.empty(), "A map with no package gained one");
+    auto packaged = changed_map;
+    packaged.map_package = "Zee-Momentum_Park-1.2.0";
+    const auto packaged_arrival = decode_wire(encode_wire(packaged));
+    check(packaged_arrival && packaged_arrival->map_package == "Zee-Momentum_Park-1.2.0" &&
+              packaged_arrival->map_label == "Momentum Park", "The map's package lost from a map change");
+    for (const auto *bad : {"Momentum Park", "Zee-Momentum_Park", "Zee-Momentum-Park-1.2.0", "Zee-Momentum_Park-1.2"}) {
+        auto wrong = changed_map;
+        wrong.map_package = bad;
+        check(reject(wrong), "A map package not in Thunderstore's form encoded");
+    }
+    Packet offer;
+    offer.kind = PacketKind::map_offer; offer.session = 9; offer.epoch = 10; offer.source = server; offer.world = 2;
+    offer.destination = changed_map.destination;
+    offer.map = changed_map.map;
+    offer.map_authorized = true;
+    offer.map_label = "Momentum Park";
+    offer.map_package = "Zee-Momentum_Park-1.2.0";
+    const auto offered = decode_wire(encode_wire(offer));
+    check(offered && offered->kind == PacketKind::map_offer && offered->map_package == offer.map_package &&
+              offered->map_label == offer.map_label && offered->destination == offer.destination, "The map's package lost from a map offer");
     auto stray = maps;
     stray.map_pool = {2};
     check(reject(stray), "A map pool entry past the map list encoded");

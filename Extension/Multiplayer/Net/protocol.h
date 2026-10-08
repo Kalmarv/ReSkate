@@ -25,7 +25,7 @@ namespace dingosdk::multiplayer {
 constexpr std::size_t max_skater_bones = 512, max_board_bones = 64;
 constexpr std::size_t max_packet = 24576;
 constexpr std::size_t packet_header_size = 64;
-constexpr std::uint16_t protocol_version = 44;
+constexpr std::uint16_t protocol_version = 45;
 constexpr std::size_t max_throwdown_message = 4096;
 // Packet::tuning: the host's SkatePhysicsTuning differences (Extension/Skater/physics_tuning.h).
 constexpr std::size_t max_physics_tuning = 16384;
@@ -115,6 +115,8 @@ constexpr std::size_t max_server_maps = 128, max_map_asset = 128;
 bool valid_map_asset(std::string_view asset) noexcept;
 bool valid_map_pool(std::span<const std::uint16_t> pool, std::size_t maps) noexcept; // distinct indices below `maps`
 bool valid_map_label(std::string_view label) noexcept; // empty, or a name like a member's
+// empty, or the Thunderstore package a map comes from: "Namespace-Name-1.2.3" (Engine/Vfs/mod_package.h)
+bool valid_map_package(std::string_view package) noexcept;
 struct Transform {
     std::array<float, 3> position{};
     std::array<float, 4> rotation{0, 0, 0, 1};
@@ -197,6 +199,9 @@ struct Packet {
     std::vector<std::uint16_t> map_pool;      // maps: the pool as indices into `maps`, rotation order (empty: every map)
     std::uint16_t map_rotation{};             // maps: minutes per map (0: off)
     std::string map_label;                    // map_offer, world_state: the map's name for people (may be empty)
+    // map_offer, world_state: the Thunderstore package the map comes from (valid_map_package), so a
+    // player without the map can download it; empty for the game's own maps and other mods.
+    std::string map_package;
     std::vector<std::uint8_t> throwdown;      // throwdown: one encoded message (1..max_throwdown_message bytes)
     std::array<float, 3> teleport{};          // teleport: where the receiver goes (world position)
     std::vector<std::uint8_t> tuning;         // physics_tuning: 0..max_physics_tuning bytes

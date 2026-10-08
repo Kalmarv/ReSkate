@@ -208,6 +208,28 @@ int run() {
     check(odd_pool.map_pool == std::vector<std::string>{"Isle of Grom"} && odd_pool.map_rotation == 1440,
           "Bad pool entries kept, or rotation not capped");
 
+    {
+        // A map mod installed from Thunderstore (Mods/Namespace-Name with its manifest.json) names its
+        // package, so players without the map can download it; one copied in by hand names none.
+        const auto mods = folder / "Mods";
+        const auto add = [&](const char *name, const char *asset, const char *manifest) {
+            std::filesystem::create_directories(mods / name);
+            std::ofstream(mods / name / "reskate-levels.json", std::ios::binary)
+                << R"({"levels": [{"asset": ")" << asset << R"("}]})";
+            if (manifest) std::ofstream(mods / name / "manifest.json", std::ios::binary) << manifest;
+        };
+        add("Zee-Momentum_Park", "Levels/Custom/momentum/momentum", "\xef\xbb\xbf{\"name\": \"Momentum_Park\", \"version_number\": \"1.2.0\"}");
+        add("My Park", "Levels/Custom/mypark/mypark", R"({"name": "My Park", "version_number": "1.0.0"})");
+        add("Zee-Old_Park", "Levels/Custom/oldpark/oldpark", nullptr);
+        check(load_levels(mods).empty(), "Map mods with packages were refused");
+        check(map_package("Levels/Custom/momentum/momentum") == "Zee-Momentum_Park-1.2.0" &&
+                  map_package("Levels/Game/DingoLevel_Root/DingoLevel_Root|Levels/Custom/momentum/momentum") == "Zee-Momentum_Park-1.2.0",
+              "A Thunderstore map mod's package lost");
+        check(map_package("Levels/Custom/mypark/mypark").empty() && map_package("Levels/Custom/oldpark/oldpark").empty() &&
+                  map_package("Isle of Grom").empty(), "A package named for a map that has none");
+        static_cast<void>(load_levels(folder / "None"));
+    }
+
     std::filesystem::remove_all(folder);
     if (failures) return 1;
     std::cout << "server config: ok\n";

@@ -556,6 +556,7 @@ void networking(Session &s, const NativeFrame &local, std::uint64_t now) {
                 s.join_destination.clear();
                 s.map_name.clear();
                 s.map_label.clear();
+                s.map_package.clear();
                 s.map = 0;
                 s.map_load_submitted = false;
                 s.last_map_load_check = 0;
@@ -568,6 +569,7 @@ void networking(Session &s, const NativeFrame &local, std::uint64_t now) {
             if (!p.destination.empty()) {
                 s.join_destination = s.map_name = p.destination;
                 s.map_label = p.map_label;
+                s.map_package = p.map_package;
                 s.map = p.map;
             }
             s.host_world_ready = p.world_ready;
@@ -636,6 +638,7 @@ void networking(Session &s, const NativeFrame &local, std::uint64_t now) {
             if (newly_authorized || !link->last_map_offer || now - link->last_map_offer >= 1000000) {
                 auto offer = packet(s, PacketKind::map_offer, now);
                 offer.destination = s.map_name;
+                offer.map_package = hosted_map_package(s);
                 offer.challenge = link->password_challenge;
                 offer.map_authorized = authorized;
                 send_required(s, message.peer, encode_wire(offer));
@@ -667,6 +670,7 @@ void networking(Session &s, const NativeFrame &local, std::uint64_t now) {
             link->map_authorized |= p.map_authorized;
             s.join_destination = p.destination;
             s.map_label = p.map_label;
+            s.map_package = p.map_package;
             s.world = p.world;
             s.join_map_authorized |= p.map_authorized;
             if (new_challenge)

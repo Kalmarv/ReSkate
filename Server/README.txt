@@ -20,7 +20,9 @@ Custom maps
 -----------
 Copy a custom map's mod folder from the game's Mods folder into a Mods folder
 next to the server (only its reskate-levels.json is read). The map can then be
-chosen by name. Players need the same map mod installed to join.
+chosen by name. Players need the same map mod installed to join. When the folder
+came from Thunderstore (it is named Namespace-Name and keeps its manifest.json),
+players who lack the map are offered the download when they join.
 
 Players connect through Steam's relay network, so no ports need opening. If you
 do forward UDP 27015-27016 (port, query_port), the browser also shows the

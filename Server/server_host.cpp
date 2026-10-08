@@ -624,6 +624,7 @@ void Host::send_world_state() {
     auto state = packet(PacketKind::world_state, now_);
     state.destination = map_destination(config_.map);
     state.map_label = wire_map_label();
+    state.map_package = map_package(config_.map);
     state.world_ready = true; // the server has nothing to load
     const auto bytes = encode_wire(state);
     for (auto &[id, guest] : guests_)
@@ -919,6 +920,7 @@ void Host::receive(std::uint64_t peer, std::span<const std::uint8_t> bytes, std:
             auto offer = packet(PacketKind::map_offer, now_);
             offer.destination = map_destination(config_.map);
             offer.map_label = wire_map_label();
+            offer.map_package = map_package(config_.map);
             offer.challenge = link->password_challenge;
             offer.map_authorized = authorized;
             send_required(*link, encode_wire(offer));

@@ -134,6 +134,8 @@ void stop(Session &s, std::string reason) {
     s.join_started = s.last_map_request = s.last_map_load_check = 0;
     s.join_destination.clear();
     s.map_label.clear();
+    s.map_package.clear();
+    s.map_package_for.clear();
     s.world = 1;
     s.travelling = false;
     s.host_world_ready = true;

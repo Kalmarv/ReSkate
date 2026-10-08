@@ -1,4 +1,5 @@
 #include "protocol.h"
+#include "Engine/Vfs/mod_package.h"
 #include <algorithm>
 #include <bit>
 #include <charconv>
@@ -407,7 +408,8 @@ std::vector<std::uint8_t> encode(const Packet &p, bool compact_pose, std::uint32
     if (p.kind == PacketKind::map_offer &&
         (!valid_map_destination(p.destination) || p.map != map_hash(p.destination)))
         throw std::invalid_argument("Invalid host map destination");
-    if ((p.kind == PacketKind::map_offer || p.kind == PacketKind::world_state) && !valid_map_label(p.map_label))
+    if ((p.kind == PacketKind::map_offer || p.kind == PacketKind::world_state) &&
+        (!valid_map_label(p.map_label) || !valid_map_package(p.map_package)))
         throw std::invalid_argument("Invalid map name");
     if (p.kind == PacketKind::world_state &&
         (p.destination.empty() ? (p.map != 0 || p.world_ready)
@@ -453,6 +455,8 @@ std::vector<std::uint8_t> encode(const Packet &p, bool compact_pose, std::uint32
             w.bytes.insert(w.bytes.end(), p.destination.begin(), p.destination.end());
             w.integer(p.map_label.size(), 1);
             w.bytes.insert(w.bytes.end(), p.map_label.begin(), p.map_label.end());
+            w.integer(p.map_package.size(), 1);
+            w.bytes.insert(w.bytes.end(), p.map_package.begin(), p.map_package.end());
         }
         if (p.kind == PacketKind::hello) {
             w.integer(p.text.size(), 1);
@@ -465,6 +469,8 @@ std::vector<std::uint8_t> encode(const Packet &p, bool compact_pose, std::uint32
         w.bytes.insert(w.bytes.end(), p.destination.begin(), p.destination.end());
         w.integer(p.map_label.size(), 1);
         w.bytes.insert(w.bytes.end(), p.map_label.begin(), p.map_label.end());
+        w.integer(p.map_package.size(), 1);
+        w.bytes.insert(w.bytes.end(), p.map_package.begin(), p.map_package.end());
     } else if (p.kind == PacketKind::world_ready) {
         w.integer(p.world_ready ? 1 : 0, 1);
     } else if (p.kind == PacketKind::pose) {
@@ -644,12 +650,18 @@ std::vector<std::uint8_t> encode(const Packet &p, bool compact_pose, std::uint32
         w.bytes[8 + i] = static_cast<std::uint8_t>(actual_payload >> (8 * i));
     return std::move(w.bytes);
 }
+// The map's label, then its package.
 static bool read_map_label(Reader &r, std::span<const std::uint8_t> bytes, Packet &p) {
-    const auto length = r.integer(1);
+    auto length = r.integer(1);
     if (length > max_member_name || length > bytes.size() - r.at) return false;
     p.map_label.assign(reinterpret_cast<const char *>(bytes.data() + r.at), static_cast<std::size_t>(length));
     r.at += static_cast<std::size_t>(length);
-    return valid_map_label(p.map_label);
+    if (!valid_map_label(p.map_label)) return false;
+    length = r.integer(1);
+    if (length > mods::maximum_package_id || length > bytes.size() - r.at) return false;
+    p.map_package.assign(reinterpret_cast<const char *>(bytes.data() + r.at), static_cast<std::size_t>(length));
+    r.at += static_cast<std::size_t>(length);
+    return valid_map_package(p.map_package);
 }
 std::optional<Packet> decode(std::span<const std::uint8_t> bytes) noexcept {
     try {
@@ -1028,6 +1040,13 @@ bool valid_map_asset(std::string_view asset) noexcept {
 }
 bool valid_map_label(std::string_view label) noexcept {
     return label.empty() || (label.size() <= max_member_name && valid_member_name(label));
+}
+bool valid_map_package(std::string_view package) noexcept {
+    try {
+        return package.empty() || mods::parse_package(package).has_value();
+    } catch (...) {
+        return false;
+    }
 }
 bool valid_map_pool(std::span<const std::uint16_t> pool, std::size_t maps) noexcept {
     if (pool.size() > maps) return false;

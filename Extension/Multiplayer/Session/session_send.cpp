@@ -7,6 +7,7 @@
 #include "Engine/Game/Build/supported_build.h"
 #include "Engine/Core/Log/logging.h"
 #include "Extension/Skater/physics_tuning.h"
+#include "Engine/Vfs/mod_catalog.h"
 #include "Engine/Vfs/mod_scoring.h"
 #include "Extension/Multiplayer/Remote/remote_collision.h"
 #include <algorithm>
@@ -157,9 +158,37 @@ void send_required(Session &s, std::uint64_t id, const std::vector<std::uint8_t>
     if (!p || !send_packet(s, id, *p, true, false))
         s.transport.disconnect(id, "Cannot deliver required session data. Join again.");
 }
+const std::string &hosted_map_package(Session &s) {
+    if (s.map_package_for == s.map_name) return s.map_package;
+    s.map_package_for = s.map_name;
+    s.map_package.clear();
+    if (s.map_name.empty()) return s.map_package;
+    try {
+        const auto &launch = mods::catalog();
+        std::string package;
+        if (const auto *mod = mods::mod_registering(launch, s.map_name)) {
+            package = mod->package;
+        } else {
+            // A map mod applied since launch is not in the launch's catalogue: read the folder again.
+            mods::Catalog now;
+            for (auto &entry : mods::scan_mods(launch.data_root).entries)
+                if (entry.enabled) now.mods.push_back(std::move(entry.mod));
+            if (const auto *added = mods::mod_registering(now, s.map_name)) package = added->package;
+        }
+        if (valid_map_package(package)) s.map_package = std::move(package);
+    } catch (const std::exception &failure) {
+        logging::log(logging::Level::warning, logging::Channel::network, "Could not find the hosted map's mod: {}",
+                     failure.what());
+    }
+    if (!s.map_package.empty())
+        logging::log(logging::Level::info, logging::Channel::network,
+                     "Hosting a map from Thunderstore package {}; players without it are offered the download.", s.map_package);
+    return s.map_package;
+}
 void send_world_state(Session &s, std::uint64_t now) {
     auto state = packet(s, PacketKind::world_state, now);
     state.destination = s.map_name;
+    state.map_package = hosted_map_package(s);
     state.world_ready = s.host_world_ready;
     const auto bytes = encode_wire(state);
     for (const auto &peer : active_peers(s))
