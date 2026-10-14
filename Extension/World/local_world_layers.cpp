@@ -309,6 +309,11 @@ void update_world_layers(std::uintptr_t manager, std::uint64_t now) {
     std::vector<bool> done(targets.size()), inactive(targets.size());
     std::vector<std::string> status(targets.size(), "Waiting for layer");
     bool issued{};
+    // A layer with no live reference cannot hold anything loaded.
+    const auto fully_off = [&](std::size_t at) {
+        SeasonalState live;
+        return !targets[at] || (seasonal_state(r.nodes.at(targets[at]), live) && !live.requested && !live.loaded);
+    };
     for (unsigned slot = 0; slot < targets.size(); ++slot) {
         if (world_layer_nodes()[slot].map != map) continue;
         const auto parent = world_parent(static_cast<int>(slot));
@@ -323,7 +328,24 @@ void update_world_layers(std::uintptr_t manager, std::uint64_t now) {
         if (!targets[slot]) continue;
         SeasonalState state;
         if (!seasonal_state(r.nodes.at(targets[slot]), state)) continue;
-        if (!desired[slot]) {
+        // A new time of day is not asked to load until the old one reports requested and
+        // loaded both false. Loaded while the old one unloads, both times' lights share
+        // the engine's fixed light tables, and a light-heavy level overflows them.
+        const bool to_load = desired[slot] == true && !state.requested;
+        const auto old = static_cast<unsigned>(to_load ? world_layer_old_time_of_day(slot, desired, fully_off) : targets.size());
+        auto& node = r.nodes.at(targets[slot]);
+        if (old < targets.size() && node.waiting_for != old)
+            logging::log(logging::Level::info, logging::Channel::subworld,
+                "Subworld load of {} waits for {} to unload.", seasonal_bundle(slot), seasonal_bundle(old));
+        else if (old == targets.size() && to_load && node.waiting_for)
+            logging::log(logging::Level::info, logging::Channel::subworld,
+                "Subworld {} has unloaded; {} no longer waits.", seasonal_bundle(*node.waiting_for), seasonal_bundle(slot));
+        node.waiting_for = old < targets.size() ? std::optional<unsigned>(old) : std::nullopt;
+        if (node.waiting_for) {
+            status[slot] = "Waiting for the old time of day";
+            // The old one's own slot can come later in this pass: ask for its unload now.
+            (void)ensure_seasonal_state(targets[old], false, now, issued, status[old]);
+        } else if (!desired[slot]) {
             done[slot] = state.requested == state.loaded;
             inactive[slot] = done[slot] && !state.loaded;
             status[slot] = done[slot] ? "Default" : "Loading...";

@@ -169,6 +169,39 @@ inline WorldLayerMapSelection select_world_layer_map(
     return result;
 }
 
+// Time of day. A level's TOD_<n>_<name> layers, and each lighting tier's <tier>_TOD_<n>_<name>,
+// are siblings of which one is live at a time. Two live together carry both times' lights,
+// and the engine's light tables have a fixed size (8,192 per light class).
+inline bool world_layer_time_of_day(std::size_t slot) noexcept {
+    if (slot >= world_layer_nodes().size()) return false;
+    const std::string_view bundle = world_layer_nodes()[slot].bundle;
+    const auto leaf = bundle.substr(bundle.find_last_of('/') + 1);
+    const auto lower = [](char c) { return c >= 'A' && c <= 'Z' ? static_cast<char>(c + ('a' - 'A')) : c; };
+    for (std::size_t at = 0; at + 4 < leaf.size(); ++at)
+        if ((at == 0 || leaf[at - 1] == '_') && lower(leaf[at]) == 't' && lower(leaf[at + 1]) == 'o' &&
+            lower(leaf[at + 2]) == 'd' && leaf[at + 3] == '_' && leaf[at + 4] >= '1' && leaf[at + 4] <= '9')
+            return true;
+    return false;
+}
+
+// The old time of day that has to go before a time-of-day layer is switched on: a sibling
+// that is to be off and is not off yet (fully_off(sibling) is false until it reports
+// requested and loaded both false). world_layer_nodes().size() when there is none, and
+// for every layer that is not a time of day.
+template <class FullyOff>
+std::size_t world_layer_old_time_of_day(
+        std::size_t slot,
+        const std::vector<std::optional<bool>>& desired,
+        FullyOff&& fully_off) {
+    const auto& nodes = world_layer_nodes();
+    if (!world_layer_time_of_day(slot)) return nodes.size();
+    for (std::size_t at = 0; at < nodes.size() && at < desired.size(); ++at)
+        if (at != slot && nodes[at].parent == nodes[slot].parent && nodes[at].map == nodes[slot].map &&
+            desired[at] == false && world_layer_time_of_day(at) && !fully_off(at))
+            return at;
+    return nodes.size();
+}
+
 inline bool world_layer_supported(
         std::size_t choice,
         const std::vector<bool>& present) noexcept {
