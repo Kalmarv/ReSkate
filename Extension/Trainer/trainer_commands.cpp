@@ -15,7 +15,7 @@ void register_trainer_commands(Commands &registry) {
         {"open", "Open the menu on the trainer page", "[tune|presets|practice|map|realistic|fun|everything]", false},
         {"set", "Set a physics tuning value live", "<value id> <number>", true},
         {"freeze", "Keep a value through presets and resets", "<value id> 0|1", true},
-        {"reset", "Put a value (or all) back to stock", "<value id>|all", false},
+        {"reset", "Put a value (or all) back to stock", "<value id>|all|tricks|presets|everything", false},
         {"find", "List tuning values whose id contains the words", "<words>", false},
         {"preset", "Apply, remove, save or delete a preset", "apply|remove|save|delete <name>", false},
         {"dial", "Turn a built-in preset up or down: 1 is the game's own", "<multiplier> <preset name>", false},
