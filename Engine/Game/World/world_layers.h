@@ -44,6 +44,16 @@ inline std::string world_layer_title(std::string_view label) {
     }
     return title.empty() ? std::string(label) : title;
 }
+// The time of day a catalog row picks: n for "<map>_tod_<n>_<name>", the seven the `tod` commands
+// choose between; 0 for any other row, a lighting tier's "<map>_<tier>_tod_<n>_<name>" included.
+inline unsigned world_layer_time_of_day_choice(std::size_t row) {
+    if (row >= world_layers().size()) return 0;
+    const auto& layer = world_layers()[row];
+    const auto prefix = std::string(world_map_key(layer.map)) + "_tod_";
+    if (!layer.key.starts_with(prefix) || layer.key.size() < prefix.size() + 2) return 0;
+    const auto n = layer.key[prefix.size()];
+    return n >= '1' && n <= '7' && layer.key[prefix.size() + 1] == '_' ? static_cast<unsigned>(n - '0') : 0;
+}
 
 inline constexpr std::array<std::string_view, 3> world_layer_modes{"default", "on", "off"};
 // One choice per catalog row (world_layers()), in catalog order.
