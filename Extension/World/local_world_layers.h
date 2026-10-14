@@ -22,6 +22,7 @@ struct SeasonalNode {
     unsigned slot{};
     std::optional<bool> pending;
     std::uint64_t requested_at{};
+    std::optional<unsigned> waiting_for; // a time of day's old one, while it unloads
 };
 
 struct SubworldLogRow {
