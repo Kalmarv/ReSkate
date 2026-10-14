@@ -8,6 +8,21 @@
 
 using namespace dingosdk;
 
+// The probe asks the system's media session only. The game's own Spotify device and YouTube Music player
+// live in ReSkate.dll; here they are never on, as in a game where neither is signed in.
+namespace dingosdk::spotify_device {
+bool connected() noexcept { return false; }
+external_player::Track now() { return {}; }
+std::uint64_t revision() noexcept { return 0; }
+void send(external_player::Command) noexcept {}
+}
+namespace dingosdk::youtube_music {
+bool on() noexcept { return false; }
+external_player::Track now() { return {}; }
+std::uint64_t revision() noexcept { return 0; }
+void send(external_player::Command) noexcept {}
+}
+
 int main(int argc, char** argv) {
     external_player::start();
     std::this_thread::sleep_for(std::chrono::milliseconds(1500));
