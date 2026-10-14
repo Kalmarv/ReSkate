@@ -204,6 +204,11 @@ if(DINGOSDK_BUILD_MULTIPLAYER_TESTS AND WIN32)
     add_executable(dingosdk_loading_screen_tests Extension/World/Test/loading_screen_tests.cpp)
     target_include_directories(dingosdk_loading_screen_tests PRIVATE "${PROJECT_SOURCE_DIR}")
     add_test(NAME loading_screen_selection COMMAND dingosdk_loading_screen_tests)
+    # When one more light of a kind may be made, and (with a Skate folder) that the game's light code is
+    # what Extension/World/light_table_guard.cpp was written for.
+    add_executable(dingosdk_light_table_tests Engine/Game/World/Test/light_table_room_tests.cpp)
+    target_include_directories(dingosdk_light_table_tests PRIVATE "${PROJECT_SOURCE_DIR}")
+    add_test(NAME light_tables COMMAND dingosdk_light_table_tests "${DINGOSDK_TEST_GAME_ROOT}")
     add_test(NAME native_menu_browser COMMAND dingosdk_native_menu_view_tests)
     add_executable(dingosdk_native_tools_view_tests Extension/UI/NativeMenu/Test/native_tools_view_tests.cpp)
     target_include_directories(dingosdk_native_tools_view_tests PRIVATE "${PROJECT_SOURCE_DIR}")
