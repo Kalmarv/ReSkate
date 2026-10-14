@@ -836,6 +836,8 @@ std::string Host::command(std::string_view line, std::uint64_t admin) {
         for (const auto &layer : world_layers()) {
             const auto at = layer.key.find("_tod_");
             if (at == std::string::npos || at + 5 >= layer.key.size()) continue;
+            // A lighting tier's "<map>_<tier>_tod_<n>" is the level's to pick: clear it, as an older tod set it too.
+            if (at != world_map_key(layer.map).size()) { config_.layers.erase(layer.key); continue; }
             if (slot == '0') config_.layers.erase(layer.key);
             else config_.layers[layer.key] = layer.key[at + 5] == slot ? "on" : "off";
             ++count;
