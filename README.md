@@ -86,7 +86,7 @@ custom map and then join a server on another map, the screen can stay black
 | Key | Opens |
 |---|---|
 | **Insert** | the ReSkate menu |
-| **~** (grave/tilde) | the command console (`help` lists the commands) |
+| **~** (grave/tilde) | the command console (`help` explains it; the commands are in [CONSOLE.md](CONSOLE.md)) |
 | **T** | chat, in multiplayer |
 
 The menu and console keys can be changed in the launcher's Settings.
