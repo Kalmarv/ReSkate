@@ -95,6 +95,9 @@ if(DINGOSDK_BUILD_MULTIPLAYER_TESTS)
             dingosdk_lz4 dingosdk_zstd)
     endif()
     add_test(NAME server_config COMMAND dingosdk_server_config_tests)
+    add_executable(dingosdk_time_of_day_choice_tests Engine/Game/World/Test/time_of_day_choice_tests.cpp)
+    target_include_directories(dingosdk_time_of_day_choice_tests PRIVATE "${PROJECT_SOURCE_DIR}")
+    add_test(NAME world_layer_time_of_day_choice COMMAND dingosdk_time_of_day_choice_tests)
     # Park mods spawned by the server's host, over a transport that is not Steam's.
     add_executable(dingosdk_server_park_tests Server/Test/server_park_tests.cpp Server/server_host.cpp Server/server_party.cpp
         Extension/Multiplayer/Session/party_book.cpp Server/server_config.cpp Server/server_update.cpp Server/server_release.cpp

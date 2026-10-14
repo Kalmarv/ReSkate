@@ -831,14 +831,19 @@ std::string Host::command(std::string_view line, std::uint64_t admin) {
         const auto wanted = lower(argument);
         const auto found = std::find(times.begin(), times.end(), wanted);
         if (found == times.end()) return "tod default|morning|noon|afternoon|evening|night|weatherday|weathernight";
-        const auto slot = static_cast<char>('0' + (found - times.begin()));
+        const auto slot = static_cast<unsigned>(found - times.begin());
         unsigned count{};
-        for (const auto &layer : world_layers()) {
-            const auto at = layer.key.find("_tod_");
-            if (at == std::string::npos || at + 5 >= layer.key.size()) continue;
-            if (slot == '0') config_.layers.erase(layer.key);
-            else config_.layers[layer.key] = layer.key[at + 5] == slot ? "on" : "off";
-            ++count;
+        for (std::size_t row = 0; row < world_layers().size(); ++row) {
+            const auto &key = world_layers()[row].key;
+            if (const auto time = world_layer_time_of_day_choice(row)) {
+                if (!slot) config_.layers.erase(key);
+                else config_.layers[key] = time == slot ? "on" : "off";
+                ++count;
+            } else if (key.find("_tod_") != std::string::npos) {
+                // A lighting tier's own time of day is the level's to pick. `tod` used to set
+                // these too, which put all three tiers on at once; clear what it left behind.
+                config_.layers.erase(key);
+            }
         }
         if (!count) return "world-layers.json has no time-of-day layers.";
         apply_layers();
