@@ -1,5 +1,6 @@
 #include "shader_lookup.h"
 
+#include <algorithm>
 #include <cstring>
 #include <map>
 #include <stdexcept>
@@ -82,10 +83,21 @@ MergedTable merge_program_lookup(const Table& base, const std::span<const Table>
     auto rows = read_program_rows(base);
     const auto baseRows = rows;
 
+    // The program section starts with its program count. A row naming a program
+    // past it would have the game read past the end of its program list.
+    if (read<std::uint32_t>(base.resourceMeta, 0) < 4)
+        throw std::runtime_error("Program lookup has no program count");
+    const auto programs = read<std::uint32_t>(base.resource, 0);
+
     MergedTable merged;
-    for (const auto& edit : edits) {
-        for (const auto& [key, values] : read_program_rows(edit)) {
+    for (std::size_t index = 0; index < edits.size(); ++index) {
+        for (const auto& [key, values] : read_program_rows(edits[index])) {
             if (baseRows.contains(key)) continue;
+            if (const auto past = std::ranges::find_if(values, [&](auto value) { return value >= programs; });
+                past != values.end()) {
+                merged.missing.push_back({index, key, *past, programs});
+                continue;
+            }
             const auto [row, inserted] = rows.try_emplace(key, values);
             if (inserted) ++merged.added;
             else if (row->second != values) ++merged.conflicts;

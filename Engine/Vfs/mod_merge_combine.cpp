@@ -8,6 +8,7 @@
 #include "Engine/Core/Platform/path_text.h"
 
 #include <algorithm>
+#include <format>
 #include <functional>
 #include <map>
 #include <set>
@@ -907,7 +908,15 @@ fb::TocDocument combine(const fs::path& baseToc, const fs::path& baseRoot,
                         const auto table = entry.asset.resourceType == fb::shader::programLookupType
                             ? fb::shader::merge_program_lookup(baseTable, tables)
                             : fb::shader::merge_texture_lookup(baseTable, tables);
-                        if (!table.added) continue;
+                        for (const auto& row : table.missing) {
+                            const auto text = std::format("{}: material row {:016x} names shader program {}, which only "
+                                "this mod's copy has (the game's table has {}); left out, so that material is not drawn",
+                                entry.asset.name, row.key, row.program, row.programs);
+                            const auto mod = path_utf8(edits[row.edit]->root->filename());
+                            report.notes.push_back(mod + ": " + text);
+                            report.problems[mod].push_back(text);
+                        }
+                        if (!table.added && table.missing.empty()) continue;
                         rebuilt = table.resource;
                         entry.asset.resourceMeta = table.resourceMeta;
                         what = std::to_string(table.added) + " material row(s)";

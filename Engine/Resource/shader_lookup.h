@@ -20,16 +20,26 @@ struct Table {
     std::span<const std::byte> resourceMeta;
 };
 
+// A row an edit added that names a program the base does not have (one the mod
+// added to its own copy of the programs).
+struct MissingProgram {
+    std::size_t edit{};
+    std::uint64_t key{};
+    std::uint32_t program{};
+    std::uint32_t programs{};  // how many the base has
+};
+
 struct MergedTable {
     std::vector<std::byte> resource;
     std::vector<std::byte> resourceMeta;
     std::size_t added{};       // rows taken from the edits
     std::size_t conflicts{};   // rows two edits disagreed on; the first won
+    std::vector<MissingProgram> missing; // rows left out
 };
 
 // `resourceMeta` is 16 bytes: program size, relocation size, lookup size. The
-// program blob and its relocations are identical across copies because a mod
-// only ever points new keys at programs that are already there.
+// merged table keeps the base's programs and relocations, so a row an edit added
+// is kept only when every program it names is one of the base's.
 [[nodiscard]] MergedTable merge_program_lookup(const Table& base, std::span<const Table> edits);
 
 [[nodiscard]] MergedTable merge_texture_lookup(const Table& base, std::span<const Table> edits);
