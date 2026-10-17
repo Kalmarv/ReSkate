@@ -49,9 +49,9 @@ void register_hook(std::uintptr_t ctx, std::uintptr_t owner) {
         if (!q(r + 0x40)) {
             if (++bad <= 4) say("SSP owner {:#x}: record {} of {} has +0x40 null: {}", owner, (r - begin) / 0x70, count, hex(r, 0x70));
         }
-    if (n <= 64 || bad || std::has_single_bit(n)) say("SSP register #{} ctx {:#x} owner {:#x} vt {:#x} records {} [{:#x},{:#x}) blob {:#x}+{} null-in-range {} caller {:#x}",
+    if (n <= 64 || bad || std::has_single_bit(n)) say("SSP register #{} ctx {:#x} owner {:#x} vt {:#x} records {} [{:#x},{:#x}) blob {:#x}+{} null-in-range {} caller {:#x} owner bytes {}",
         n, ctx, owner, q(owner) - image, count, begin, end, q(owner + 0x18), blob_size, bad,
-        reinterpret_cast<std::uintptr_t>(_ReturnAddress()) - image);
+        reinterpret_cast<std::uintptr_t>(_ReturnAddress()) - image, hex(owner, 0x60));
     current_owner = owner;
     register_original(ctx, owner);
     current_owner = 0;
@@ -75,9 +75,10 @@ void keyset_hook(std::uintptr_t table, std::uintptr_t entry, std::uintptr_t vec)
         }
         if (!src) {
             const auto k = nulls.fetch_add(1) + 1;
-            if (k <= 16) say("SSP set item {}/{} {:#x} has +0x40 null (inside={}, owner {:#x}, index {}); caller {:#x}; bytes {}",
+            if (k <= 16) say("SSP set item {}/{} {:#x} has +0x40 null (inside={}, owner {:#x}, index {}, records {}); caller {:#x}; bytes {}; owner bytes {}; set {}",
                 i, n, item, inside, owner, owner ? static_cast<std::int64_t>(item - begin) / 0x70 : -1,
-                reinterpret_cast<std::uintptr_t>(_ReturnAddress()) - image, hex(item, 0x70));
+                owner ? (end - begin) / 0x70 : 0, reinterpret_cast<std::uintptr_t>(_ReturnAddress()) - image, hex(item, 0x70),
+                owner ? hex(owner, 0x60) : std::string{}, hex(entry, 0x10 + 8ull * n));
         }
     }
     keyset_original(table, entry, vec);
