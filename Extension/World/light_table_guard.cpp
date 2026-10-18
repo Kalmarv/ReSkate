@@ -51,7 +51,7 @@ __declspec(noinline) void note_refused(std::size_t kind) noexcept {
 // ---- TODDIAG (diag/tod-obs, observation only): which owner (creation info +0x140) each light has ----
 std::mutex diag_mutex;
 std::map<std::pair<std::uintptr_t, std::size_t>, std::array<std::uint64_t, 2>> diag_owners; // made, refused
-void diag_light(std::size_t kind, void* info, void* entity, bool refused) noexcept {
+void diag_light(std::size_t kind, void* info, void* entity, bool was_refused) noexcept {
     try {
         std::uintptr_t owner{}, data{};
         memory::peek(reinterpret_cast<std::uintptr_t>(info) + 0x140, owner);
@@ -59,7 +59,7 @@ void diag_light(std::size_t kind, void* info, void* entity, bool refused) noexce
         std::lock_guard lock(diag_mutex);
         if (diag_owners.size() > 2000) return;
         auto& n = diag_owners[{owner, kind}];
-        const auto c = ++n[refused ? 1 : 0];
+        const auto c = ++n[was_refused ? 1 : 0];
         if (c == 1) {
             std::array<std::uint64_t, 24> of{};
             memory::peek(owner, of);
@@ -67,11 +67,11 @@ void diag_light(std::size_t kind, void* info, void* entity, bool refused) noexce
             for (std::size_t i = 0; i < of.size(); ++i) fields += std::format(" +{:02x}={:x}", 8 * i, of[i]);
             logging::log(logging::Level::info, logging::Channel::runtime,
                 "TODDIAG t={} light owner {:x} kind {} first {} (data {:x}, entity {:x}, owners {}):{}",
-                GetTickCount64(), owner, lt::kinds[kind].name, refused ? "refused" : "made", data,
+                GetTickCount64(), owner, lt::kinds[kind].name, was_refused ? "refused" : "made", data,
                 reinterpret_cast<std::uintptr_t>(entity), diag_owners.size(), fields);
         } else if (c % 1000 == 0) {
             logging::log(logging::Level::info, logging::Channel::runtime, "TODDIAG t={} light owner {:x} kind {} {} {}",
-                GetTickCount64(), owner, lt::kinds[kind].name, refused ? "refused" : "made", c);
+                GetTickCount64(), owner, lt::kinds[kind].name, was_refused ? "refused" : "made", c);
         }
     } catch (...) {}
 }
