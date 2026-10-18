@@ -3,6 +3,10 @@
 #include "local_park_rotation.h"
 #include "local_world_layers.h"
 #include "Engine/Game/Build/20260929/world_layers.h"
+#include "Engine/Game/Build/20260929/light_tables.h"
+#include <format>
+#include <intrin.h>
+#include <map>
 
 namespace dingosdk::profile_runtime {
 // Exact-build SubWorldReference adapter; analysis/seasonal-world-layers.md.
@@ -90,8 +94,80 @@ std::uintptr_t seasonal_destroy_hook(std::uintptr_t entity, unsigned flags) {
     return r.destroy(entity, flags);
 }
 
+// ---- TODDIAG (diag/tod-obs, observation only; never for upstream) ----
+namespace {
+const char* diag_reset_reason = "other";
+std::uint64_t diag_lines{};
+bool diag_budget() { return ++diag_lines <= 20000; }
+// Live light IDs of one kind: issued fresh IDs minus the free list (a tagged stack of 0x60-byte
+// records, next index at +0x50, record lookup as Skate+0x604af0).
+bool diag_light_live(std::size_t kind, std::uint32_t& issued, std::uint32_t& free_count) {
+    namespace lt = addr::light_tables;
+    std::uintptr_t renderer{};
+    if (!memory::peek(local_runtime().base + lt::renderer, renderer) || !renderer) return false;
+    const auto alloc = renderer + lt::kinds[kind].manager + lt::allocator;
+    std::uint64_t head{};
+    if (!memory::peek(alloc + lt::free_head, head) || !memory::peek(alloc + lt::issued, issued)) return false;
+    free_count = 0;
+    auto index = static_cast<std::uint32_t>(head);
+    while (index != 0xffffffffu && free_count < 70000) {
+        const std::uint64_t v = std::uint64_t{index} + 0x10;
+        unsigned long bit{};
+        _BitScanReverse64(&bit, v);
+        if (bit < 4) return false;
+        std::uintptr_t page{};
+        if (!memory::peek(alloc + 8 + 8 * (bit - 4), page) || !page) return false;
+        const auto offset = v & ((std::uint64_t{1} << bit) - 1);
+        if (!memory::peek(page + 0x60 * offset + 0x50, index)) return false;
+        ++free_count;
+    }
+    return true;
+}
+void diag_observe(std::uintptr_t manager, std::uint64_t now) {
+    auto& r = world_layers_runtime();
+    static std::uintptr_t last_manager{};
+    if (manager != last_manager && diag_budget())
+        logging::log(logging::Level::info, logging::Channel::subworld, "TODDIAG t={} manager {:x} (was {:x})", now, manager, last_manager);
+    last_manager = manager;
+    struct Raw { std::uintptr_t handle{}; std::uint8_t flags{}; bool ok{}; };
+    static std::map<std::uintptr_t, Raw> last;
+    std::map<std::uintptr_t, Raw> seen;
+    for (const auto& [entity, node] : r.nodes) {
+        if (!world_layer_time_of_day(node.slot)) continue;
+        Raw raw;
+        std::uintptr_t vt{};
+        raw.ok = memory::peek(entity, vt) && vt == local_runtime().base + addr::world_layers::subworld_reference_vtable &&
+            memory::peek(entity + 0x80, raw.handle) && memory::peek(entity + 0x148, raw.flags);
+        seen[entity] = raw;
+        const auto found = last.find(entity);
+        if ((found == last.end() || found->second.handle != raw.handle || found->second.flags != raw.flags || found->second.ok != raw.ok) && diag_budget())
+            logging::log(logging::Level::info, logging::Channel::subworld,
+                "TODDIAG t={} tod {} entity {:x} gen {} ctx {:x} ok={} handle {:x} flags {:02x}",
+                now, seasonal_bundle(node.slot), entity, node.generation, node.context, raw.ok, raw.handle, raw.flags);
+    }
+    for (const auto& [entity, raw] : last)
+        if (!seen.contains(entity) && diag_budget())
+            logging::log(logging::Level::info, logging::Channel::subworld, "TODDIAG t={} tod entity {:x} gone from nodes", now, entity);
+    last = std::move(seen);
+    static std::array<std::int64_t, 6> last_live{-1, -1, -1, -1, -1, -1};
+    for (std::size_t kind : {std::size_t{2}, std::size_t{3}}) {
+        std::uint32_t issued{}, free_count{};
+        if (!diag_light_live(kind, issued, free_count)) continue;
+        const std::int64_t live = std::int64_t{issued} - free_count;
+        if (live != last_live[kind] && diag_budget())
+            logging::log(logging::Level::info, logging::Channel::subworld, "TODDIAG t={} lights {} live {} issued {} free {}",
+                now, addr::light_tables::kinds[kind].name, live, issued, free_count);
+        last_live[kind] = live;
+    }
+}
+}
+
 void reset_world_layer_session() {
     auto& r = world_layers_runtime();
+    if ((r.context || r.root_generation) && diag_budget())
+        logging::log(logging::Level::info, logging::Channel::subworld, "TODDIAG t={} session reset ({}), context {:x} root gen {}",
+            GetTickCount64(), diag_reset_reason, r.context, r.root_generation);
+    diag_reset_reason = "other";
     r.context = 0; r.root_generation = 0; r.next_poll = 0;
     r.original.assign(world_layer_nodes().size(), std::nullopt);
     r.managed.assign(world_layer_nodes().size(), false); r.model.map = WorldMap::none;
@@ -210,8 +286,9 @@ void update_world_layers(std::uintptr_t manager, std::uint64_t now) {
     std::uintptr_t event_context{}, context{};
     // Grom has no BAM park-ready flag. Keep the same exact manager/context
     // checks, but select the map from its live, root-owned references instead.
+    diag_observe(manager, now);
     if (!park_owner_ready(manager, event_context, false) || !read(manager + 8, context)) {
-        reset_world_layer_session(); return;
+        diag_reset_reason = "park owner not ready"; reset_world_layer_session(); return;
     }
     if (now < r.next_poll) return;
     r.next_poll = now + 250;
@@ -234,11 +311,15 @@ void update_world_layers(std::uintptr_t manager, std::uint64_t now) {
     // unique set of top-level donor controllers is also a valid map identity.
     const auto selection = select_world_layer_map(
         present, r.map_hint.load(std::memory_order_acquire));
-    if (selection.map == WorldMap::none) { reset_world_layer_session(); return; }
+    if (selection.map == WorldMap::none) { diag_reset_reason = "no map selected"; reset_world_layer_session(); return; }
     const auto anchor = static_cast<unsigned>(selection.root);
     const auto map = selection.map;
     const auto root_generation = r.nodes.at(targets[anchor]).generation;
     if (r.context != context || r.root_generation != root_generation) {
+        if (diag_budget())
+            logging::log(logging::Level::info, logging::Channel::subworld, "TODDIAG t={} new session: context {:x} (was {:x}), anchor slot {} {} gen {} (was {})",
+                now, context, r.context, anchor, seasonal_bundle(anchor), root_generation, r.root_generation);
+        diag_reset_reason = "context or root generation changed";
         reset_world_layer_session(); r.context = context; r.root_generation = root_generation;
         dingosdk::logging::event(dingosdk::logging::Channel::world, dingosdk::Json{
             {"event", "local_world_layer_map_selected"},
@@ -330,6 +411,20 @@ void update_world_layers(std::uintptr_t manager, std::uint64_t now) {
         if (!seasonal_state(r.nodes.at(targets[slot]), state)) continue;
         // Two times of day loaded at once can overflow the engine's light tables: the old one goes first.
         const auto old = desired[slot] == true && !state.requested ? world_layer_old_time_of_day(slot, desired, fully_off) : targets.size();
+        if (desired[slot] == true && !state.requested && world_layer_time_of_day(slot)) {
+            std::string siblings;
+            for (unsigned at = 0; at < targets.size(); ++at) {
+                if (at == slot || world_layer_nodes()[at].parent != world_layer_nodes()[slot].parent ||
+                    world_layer_nodes()[at].map != map || !world_layer_time_of_day(at)) continue;
+                SeasonalState live;
+                const bool ok = targets[at] && seasonal_state(r.nodes.at(targets[at]), live);
+                siblings += std::format(" [{} desired={} target={:x} ok={} req={} loaded={}]", seasonal_bundle(at),
+                    desired[at] ? (*desired[at] ? "on" : "off") : "none", targets[at], ok, live.requested, live.loaded);
+            }
+            if (diag_budget())
+                logging::log(logging::Level::info, logging::Channel::subworld, "TODDIAG t={} barrier for {} (loaded={}): old={}{}",
+                    now, seasonal_bundle(slot), state.loaded, old < targets.size() ? seasonal_bundle(old) : std::string("none"), siblings);
+        }
         if (old < targets.size()) {
             status[slot] = "Waiting for the old time of day";
             (void)ensure_seasonal_state(targets[old], false, now, issued, status[old]);
