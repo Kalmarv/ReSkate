@@ -40,6 +40,9 @@ struct MergeReport {
     std::vector<Conflict> conflicts;
     // Nothing was built: the check before the merge found `conflicts` (MergeOptions::conflicts_first).
     bool stopped_for_conflicts{};
+    // Names in the mods the game would take for one another, found by the check before the merge:
+    // one line per mod and kind of clash, the first few named. Only said; nothing changes for them.
+    std::vector<std::string> name_warnings;
     // Every superbundle the merged mods' layouts assign to an install chunk,
     // as (superbundle, install chunk name). A live merge registers the ones
     // the game did not know at launch.

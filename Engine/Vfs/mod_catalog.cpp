@@ -535,6 +535,7 @@ Catalog load_catalog(const std::filesystem::path& data_root, const MergeObserver
             for (int round = 0;; ++round) {
                 // The first looks for conflicts before building anything (find_conflicts).
                 merge = merge_mods(result, observe, {.conflicts_first = round == 0});
+                for (auto& warning : merge.name_warnings) result.warnings.push_back(std::move(warning));
                 if (!merge.issue.empty() || round == 4) break; // a fifth merge only rebuilds without round four's removals
                 // (What the check before the merge noted, which the merge's own notes below would not carry.)
                 if (merge.stopped_for_conflicts)

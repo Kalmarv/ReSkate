@@ -135,6 +135,14 @@ MergeReport merge_mods(const Catalog& catalog, const MergeObserver& observe, con
             const auto tenths = (std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - started).count() + 50) / 100;
             report.notes.push_back("Conflict check: " + std::to_string(report.conflicts.size()) + " conflicting pair(s) in " +
                                    std::to_string(tenths / 10) + '.' + std::to_string(tenths % 10) + " s");
+            // Every bundle of every mod this time, a map's own names included: two names the game would
+            // take for one another break even inside one mod.
+            checking("Checking the mods' asset names");
+            const auto named = Clock::now();
+            report.name_warnings = check_names(mods, modFiles, catalog.data_root, output, catalog.root / names_cache_file, readers - 1);
+            const auto namedTenths = (std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - named).count() + 50) / 100;
+            report.notes.push_back("Name check: " + std::to_string(report.name_warnings.size()) + " warning(s) in " +
+                                   std::to_string(namedTenths / 10) + '.' + std::to_string(namedTenths % 10) + " s");
             if (!report.conflicts.empty()) {
                 report.stopped_for_conflicts = true;
                 return report;

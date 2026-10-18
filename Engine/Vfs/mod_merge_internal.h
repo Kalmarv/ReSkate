@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <optional>
 #include <set>
@@ -364,6 +365,19 @@ struct ChunkRecord {
                                                           std::span<const ChunkRecord> chunks,
                                                           std::size_t game = ChunkRecord::none,
                                                           std::span<const fb::Guid> shipped = {});
+
+// `count` pieces of work on up to `threads` threads beside this one, taken in turn (`background`: at a
+// priority under the game's). A piece that throws finds nothing.
+void in_parallel(std::size_t count, std::size_t threads, bool background, const std::function<void(std::size_t)>& work);
+
+// Names the game would take for one another, as notes for the log (one line per mod and kind, the
+// first few named): EBX or resource names with the same name hash, mesh sets with the same low 32
+// bits of it, and one resource name given two resource ids. Only the mods' and the game's bundle
+// manifests are read; the game's names are kept in `cache` between launches. Changes nothing.
+inline constexpr wchar_t names_cache_file[] = L".reskate-game-names.bin";
+std::vector<std::string> check_names(const std::vector<const Mod*>& mods, const std::map<const Mod*, RelativeFiles>& modFiles,
+                                     const fs::path& dataRoot, const fs::path& output, const fs::path& cache,
+                                     std::size_t threads = 0, bool background = false);
 
 fb::TocDocument combine(const fs::path& baseToc, const fs::path& baseRoot,
                         std::vector<Source>& sources, MergeReport& report,

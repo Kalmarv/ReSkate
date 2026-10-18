@@ -67,6 +67,8 @@ struct Shared {
     std::vector<std::vector<Change>> changes;       // by copy: what it ships that is not the game's
 };
 
+} // namespace
+
 // `count` pieces of work on up to `threads` threads beside this one, taken in turn.
 void in_parallel(std::size_t count, std::size_t threads, bool background, const std::function<void(std::size_t)>& work) {
     std::atomic<std::size_t> next{0};
@@ -90,6 +92,8 @@ void in_parallel(std::size_t count, std::size_t threads, bool background, const 
     } catch (const std::system_error&) {} // fewer threads, or none: this one does the rest
     run();
 }
+
+namespace {
 
 // The game's copy of a bundle, keyed, to tell a mod's change from a copy of the game's.
 void read_game(Shared& shared, const CasStore& store, const fs::path& baseRoot, const fs::path& gameRoot) {
