@@ -139,6 +139,21 @@ void diag_observe(std::uintptr_t manager, std::uint64_t now) {
         raw.ok = memory::peek(entity, vt) && vt == local_runtime().base + addr::world_layers::subworld_reference_vtable &&
             memory::peek(entity + 0x80, raw.handle) && memory::peek(entity + 0x148, raw.flags);
         seen[entity] = raw;
+        // Raw fields 0x40..0x180 of the reference, change-logged, to look for a teardown signal.
+        static std::map<std::uintptr_t, std::array<std::uint64_t, 40>> last_fields;
+        static std::uint64_t field_lines{};
+        std::array<std::uint64_t, 40> fields{};
+        if (raw.ok && memory::peek(entity + 0x40, fields)) {
+            auto& before = last_fields[entity];
+            const bool first = std::all_of(before.begin(), before.end(), [](auto v) { return v == 0; });
+            for (std::size_t i = 0; i < fields.size(); ++i)
+                if ((first || before[i] != fields[i]) && field_lines < 6000) {
+                    ++field_lines;
+                    logging::log(logging::Level::info, logging::Channel::subworld, "TODDIAG t={} field {} +{:03x} {:x} -> {:x}",
+                        now, seasonal_bundle(node.slot), 0x40 + 8 * i, before[i], fields[i]);
+                }
+            before = fields;
+        }
         const auto found = last.find(entity);
         if ((found == last.end() || found->second.handle != raw.handle || found->second.flags != raw.flags || found->second.ok != raw.ok) && diag_budget())
             logging::log(logging::Level::info, logging::Channel::subworld,
