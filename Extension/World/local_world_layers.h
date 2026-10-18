@@ -1,5 +1,7 @@
 #pragma once
+#include "Engine/Game/World/time_of_day_handover.h"
 #include "Extension/Profile/runtime_internal.h"
+#include "light_table_guard.h"
 #include "subworld_loading_progress.h"
 
 namespace dingosdk::profile_runtime {
@@ -55,6 +57,10 @@ struct WorldLayersRuntime {
     std::vector<bool> managed = std::vector<bool>(world_layer_nodes().size());
     WorldLayersModel model;
     WorldLayerOverride lobby_override;
+    // Times of day on their way out, marked with the light tables as they were asked to go. Not
+    // part of the session: reset_world_layer_session leaves it, entering another world clears it.
+    using LightTables = std::array<light_table_guard::Occupancy, light_table_guard::kinds>;
+    TimeOfDayHandover<LightTables> time_of_day;
 };
 
 WorldLayersRuntime& world_layers_runtime();

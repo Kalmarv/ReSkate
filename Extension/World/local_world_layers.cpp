@@ -186,6 +186,21 @@ bool ensure_seasonal_state(std::uintptr_t entity, bool wanted, std::uint64_t now
     return false; // loading may create/destroy other captured references
 }
 
+// Whether lights an outgoing time of day made may still be in the light tables, against the
+// tables as they were when it was asked to go. Two times of day at once only overflow a table too
+// full to hold its contents twice; for those, its lights have left once a free list has grown.
+bool time_of_day_lights_left(const std::optional<WorldLayersRuntime::LightTables>& before,
+                             const std::optional<WorldLayersRuntime::LightTables>& now) {
+    if (!before) return false; // the tables could not be read: nothing to wait for
+    bool crowded{};
+    for (const auto& kind : *before) crowded = crowded || kind.live > light_table_guard::capacity / 2;
+    if (!crowded) return false;
+    if (!now) return true;
+    for (std::size_t kind = 0; kind < light_table_guard::kinds; ++kind)
+        if ((*now)[kind].free > (*before)[kind].free) return false;
+    return true;
+}
+
 void update_world_layers(std::uintptr_t manager, std::uint64_t now) {
     auto& r = world_layers_runtime();
     if (!r.active.load(std::memory_order_acquire)) return;
@@ -246,6 +261,19 @@ void update_world_layers(std::uintptr_t manager, std::uint64_t now) {
             {"canonical_anchor", selection.canonical}}.dump().c_str());
     }
     r.model.ready = true; r.model.map = map;
+    // Follow every time of day across session resets, before dispatch can destroy references.
+    std::optional<std::optional<WorldLayersRuntime::LightTables>> read_tables;
+    const auto tables = [&] {
+        if (!read_tables) read_tables = light_table_guard::occupancy();
+        return *read_tables;
+    };
+    r.time_of_day.enter(root_generation, targets.size());
+    for (unsigned slot = 0; slot < targets.size(); ++slot) {
+        if (world_layer_nodes()[slot].map != map || !world_layer_time_of_day(slot)) continue;
+        SeasonalState state;
+        const bool readable = targets[slot] && seasonal_state(r.nodes.at(targets[slot]), state);
+        r.time_of_day.observe(slot, readable, state.requested, state.loaded, now, tables);
+    }
     // Publish a separate native snapshot for Default checkboxes. Compute it
     // before dispatch, which can synchronously destroy captured references.
     std::vector<std::optional<bool>> observed(targets.size());
@@ -310,9 +338,29 @@ void update_world_layers(std::uintptr_t manager, std::uint64_t now) {
     std::vector<bool> done(targets.size()), inactive(targets.size());
     std::vector<std::string> status(targets.size(), "Waiting for layer");
     bool issued{};
-    const auto fully_off = [&](std::size_t at) {
-        SeasonalState live;
-        return !targets[at] || (seasonal_state(r.nodes.at(targets[at]), live) && !live.requested && !live.loaded);
+    using Wait = TimeOfDayHandover<WorldLayersRuntime::LightTables>::Wait;
+    std::vector<Wait> waits(targets.size(), Wait::gone);
+    const auto gone = [&](std::size_t at) {
+        const auto off_at = r.time_of_day.off_at(at);
+        const bool waited = r.time_of_day.waited_for_lights(at);
+        const auto wait = r.time_of_day.settle(at, now, [&](const std::optional<WorldLayersRuntime::LightTables>& before) {
+            return time_of_day_lights_left(before, tables());
+        });
+        waits[at] = wait;
+        const auto& bundle = seasonal_bundle(static_cast<unsigned>(at));
+        if (wait == Wait::gone && off_at)
+            dingosdk::logging::event(dingosdk::logging::Channel::world, dingosdk::Json{{"event", "local_world_layer_time_of_day_gone"},
+                {"slot", at}, {"bundle", bundle}, {"after_unload_ms", now - off_at}, {"waited_for_lights", waited}}.dump().c_str());
+        if (wait == Wait::timed_out && off_at)
+            logging::log(logging::Level::warning, logging::Channel::subworld,
+                "Time of day: {} has not given its lights back {} ms after it unloaded; the next one loads anyway.", bundle, now - off_at);
+        else if (wait == Wait::timed_out)
+            logging::log(logging::Level::warning, logging::Channel::subworld,
+                "Time of day: {} went missing before it unloaded; the next one loads anyway.", bundle);
+        else if (wait == Wait::gone && waited)
+            logging::log(logging::Level::info, logging::Channel::subworld,
+                "Time of day: {} has given its lights back, {} ms after it unloaded.", bundle, now - off_at);
+        return wait == Wait::gone || wait == Wait::timed_out;
     };
     for (unsigned slot = 0; slot < targets.size(); ++slot) {
         if (world_layer_nodes()[slot].map != map) continue;
@@ -328,11 +376,16 @@ void update_world_layers(std::uintptr_t manager, std::uint64_t now) {
         if (!targets[slot]) continue;
         SeasonalState state;
         if (!seasonal_state(r.nodes.at(targets[slot]), state)) continue;
-        // Two times of day loaded at once can overflow the engine's light tables: the old one goes first.
-        const auto old = desired[slot] == true && !state.requested ? world_layer_old_time_of_day(slot, desired, fully_off) : targets.size();
+        // Two times of day loaded at once can overflow the engine's light tables: the old one goes
+        // first, lights and all (time_of_day_handover.h).
+        const auto old = desired[slot] == true && !state.requested ? world_layer_old_time_of_day(slot, desired, gone) : targets.size();
         if (old < targets.size()) {
-            status[slot] = "Waiting for the old time of day";
-            (void)ensure_seasonal_state(targets[old], false, now, issued, status[old]);
+            status[slot] = waits[old] == Wait::lights ? "Waiting for the old time of day's lights" : "Waiting for the old time of day";
+            if (targets[old]) {
+                const auto marked = tables();
+                (void)ensure_seasonal_state(targets[old], false, now, issued, status[old]);
+                if (issued && marked) r.time_of_day.mark(old, *marked);
+            }
         } else if (!desired[slot]) {
             done[slot] = state.requested == state.loaded;
             inactive[slot] = done[slot] && !state.loaded;

@@ -6,6 +6,7 @@
 #include "Engine/Game/Build/20260929/light_tables.h"
 #include <array>
 #include <atomic>
+#include <intrin.h>
 #include <utility>
 
 namespace dingosdk::light_table_guard {
@@ -21,6 +22,9 @@ std::array<Factory, kind_count> originals{};
 std::uintptr_t image{};
 std::atomic<bool> installed{};
 std::array<std::atomic<std::uint64_t>, kind_count> refused{};
+// The image, once its allocator records are known to be laid out as light_tables.h says.
+std::atomic<std::uintptr_t> readable{};
+static_assert(kind_count == kinds && lt::capacity == capacity);
 
 bool room(std::size_t kind) noexcept {
     std::uintptr_t renderer{};
@@ -57,11 +61,46 @@ bool matches(std::uintptr_t base, const game::build::Fingerprint& print) noexcep
     std::array<unsigned char, 32> head{};
     return memory::peek(base + print.rva, head) && head == print.bytes;
 }
+
+// One kind's table: its IDs given out, less those on the free list. False when a record cannot be
+// read or the list does not end where it should (the game changed it while it was being walked).
+bool kind_occupancy(std::uintptr_t renderer, std::size_t kind, Occupancy& result) noexcept {
+    const auto allocator = renderer + lt::kinds[kind].manager + lt::allocator;
+    std::uint64_t head{};
+    std::uint32_t issued{};
+    if (!memory::peek(allocator + lt::free_head, head) || !memory::peek(allocator + lt::issued, issued) || issued > lt::capacity * 2)
+        return false;
+    std::uint32_t free{};
+    for (auto id = static_cast<std::uint32_t>(head); id != 0xffffffff; ++free) {
+        if (id >= issued || free >= issued) return false;
+        unsigned long bit{};
+        _BitScanReverse64(&bit, std::uint64_t{id} + 16);
+        std::uintptr_t page{};
+        if (!memory::peek(allocator + 8 + 8 * (bit - 4), page) || !page ||
+            !memory::peek(page + lt::record_size * (std::uint64_t{id} + 16 - (std::uint64_t{1} << bit)) + lt::next_free, id))
+            return false;
+    }
+    result = {issued - free, free};
+    return true;
+}
 } // namespace
+
+std::optional<std::array<Occupancy, kinds>> occupancy() noexcept {
+    const auto base = readable.load(std::memory_order_acquire);
+    std::uintptr_t renderer{};
+    if (!base || !memory::peek(base + lt::renderer, renderer) || !renderer) return std::nullopt;
+    std::array<Occupancy, kinds> result{};
+    // The game can change a list while it is walked: one more try, then no answer this time.
+    for (std::size_t kind = 0; kind < kinds; ++kind)
+        if (!kind_occupancy(renderer, kind, result[kind]) && !kind_occupancy(renderer, kind, result[kind]))
+            return std::nullopt;
+    return result;
+}
 
 bool install(std::uintptr_t base) noexcept {
     if (installed.exchange(true)) return originals[0] != nullptr;
     if (!base) return false;
+    if (matches(base, lt::take_id) && matches(base, lt::record_of)) readable.store(base, std::memory_order_release);
     bool known = matches(base, lt::take_id);
     for (const auto& kind : lt::kinds) known = known && matches(base, kind.factory);
     if (!known) {
