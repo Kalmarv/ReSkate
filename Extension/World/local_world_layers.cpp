@@ -125,6 +125,8 @@ bool diag_light_live(std::size_t kind, std::uint32_t& issued, std::uint32_t& fre
 }
 void diag_observe(std::uintptr_t manager, std::uint64_t now) {
     auto& r = world_layers_runtime();
+    static std::uint64_t frame{};
+    ++frame;
     static std::uintptr_t last_manager{};
     if (manager != last_manager && diag_budget())
         logging::log(logging::Level::info, logging::Channel::subworld, "TODDIAG t={} manager {:x} (was {:x})", now, manager, last_manager);
@@ -157,8 +159,8 @@ void diag_observe(std::uintptr_t manager, std::uint64_t now) {
         const auto found = last.find(entity);
         if ((found == last.end() || found->second.handle != raw.handle || found->second.flags != raw.flags || found->second.ok != raw.ok) && diag_budget())
             logging::log(logging::Level::info, logging::Channel::subworld,
-                "TODDIAG t={} tod {} entity {:x} gen {} ctx {:x} ok={} handle {:x} flags {:02x}",
-                now, seasonal_bundle(node.slot), entity, node.generation, node.context, raw.ok, raw.handle, raw.flags);
+                "TODDIAG t={} f={} tod {} entity {:x} gen {} ctx {:x} ok={} handle {:x} flags {:02x}",
+                now, frame, seasonal_bundle(node.slot), entity, node.generation, node.context, raw.ok, raw.handle, raw.flags);
     }
     for (const auto& [entity, raw] : last)
         if (!seen.contains(entity) && diag_budget())
@@ -170,8 +172,8 @@ void diag_observe(std::uintptr_t manager, std::uint64_t now) {
         if (!diag_light_live(kind, issued, free_count)) continue;
         const std::int64_t live = std::int64_t{issued} - free_count;
         if (live != last_live[kind] && diag_budget())
-            logging::log(logging::Level::info, logging::Channel::subworld, "TODDIAG t={} lights {} live {} issued {} free {}",
-                now, addr::light_tables::kinds[kind].name, live, issued, free_count);
+            logging::log(logging::Level::info, logging::Channel::subworld, "TODDIAG t={} f={} lights {} live {} issued {} free {}",
+                now, frame, addr::light_tables::kinds[kind].name, live, issued, free_count);
         last_live[kind] = live;
     }
 }

@@ -7,6 +7,11 @@
 #include <array>
 #include <atomic>
 #include <utility>
+#include <format>
+#include <map>
+#include <mutex>
+#include <string>
+#include <Windows.h>
 
 namespace dingosdk::light_table_guard {
 namespace {
@@ -43,12 +48,42 @@ __declspec(noinline) void note_refused(std::size_t kind) noexcept {
             lt::kinds[kind].name, count);
     } catch (...) {}
 }
+// ---- TODDIAG (diag/tod-obs, observation only): which owner (creation info +0x140) each light has ----
+std::mutex diag_mutex;
+std::map<std::pair<std::uintptr_t, std::size_t>, std::array<std::uint64_t, 2>> diag_owners; // made, refused
+void diag_light(std::size_t kind, void* info, void* entity, bool refused) noexcept {
+    try {
+        std::uintptr_t owner{}, data{};
+        memory::peek(reinterpret_cast<std::uintptr_t>(info) + 0x140, owner);
+        memory::peek(reinterpret_cast<std::uintptr_t>(info) + 0x10, data);
+        std::lock_guard lock(diag_mutex);
+        if (diag_owners.size() > 2000) return;
+        auto& n = diag_owners[{owner, kind}];
+        const auto c = ++n[refused ? 1 : 0];
+        if (c == 1) {
+            std::array<std::uint64_t, 24> of{};
+            memory::peek(owner, of);
+            std::string fields;
+            for (std::size_t i = 0; i < of.size(); ++i) fields += std::format(" +{:02x}={:x}", 8 * i, of[i]);
+            logging::log(logging::Level::info, logging::Channel::runtime,
+                "TODDIAG t={} light owner {:x} kind {} first {} (data {:x}, entity {:x}, owners {}):{}",
+                GetTickCount64(), owner, lt::kinds[kind].name, refused ? "refused" : "made", data,
+                reinterpret_cast<std::uintptr_t>(entity), diag_owners.size(), fields);
+        } else if (c % 1000 == 0) {
+            logging::log(logging::Level::info, logging::Channel::runtime, "TODDIAG t={} light owner {:x} kind {} {} {}",
+                GetTickCount64(), owner, lt::kinds[kind].name, refused ? "refused" : "made", c);
+        }
+    } catch (...) {}
+}
 template <std::size_t Kind> void* guarded(void* creator, void* info) {
     if (!room(Kind)) {
         note_refused(Kind);
+        diag_light(Kind, info, nullptr, true);
         return nullptr; // (as the game's own factory does for a light it should not make)
     }
-    return originals[Kind](creator, info);
+    auto* const entity = originals[Kind](creator, info);
+    if (entity) diag_light(Kind, info, entity, false);
+    return entity;
 }
 template <std::size_t... Kinds> std::array<void*, kind_count> replacements(std::index_sequence<Kinds...>) {
     return {reinterpret_cast<void*>(&guarded<Kinds>)...};
