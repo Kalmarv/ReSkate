@@ -57,7 +57,18 @@ void diag_light(std::size_t kind, void* info, void* entity, bool was_refused) no
         memory::peek(reinterpret_cast<std::uintptr_t>(info) + 0x140, owner);
         memory::peek(reinterpret_cast<std::uintptr_t>(info) + 0x10, data);
         std::lock_guard lock(diag_mutex);
-        if (diag_owners.size() > 2000) return;
+        // Every 250th light (per kind) and refused: its creation info, 0x00..0x160.
+        static std::array<std::uint64_t, 6> seen{};
+        if (++seen[kind] % 250 == 1) {
+            std::array<std::uint64_t, 45> in{};
+            memory::peek(reinterpret_cast<std::uintptr_t>(info), in);
+            std::string fields;
+            for (std::size_t i = 0; i < in.size(); ++i) fields += std::format(" {:x}", in[i]);
+            logging::log(logging::Level::info, logging::Channel::runtime, "TODDIAG t={} light info {} #{} {} entity {:x}:{}",
+                GetTickCount64(), lt::kinds[kind].name, seen[kind], was_refused ? "refused" : "made",
+                reinterpret_cast<std::uintptr_t>(entity), fields);
+        }
+        if (diag_owners.size() > 50) return;
         auto& n = diag_owners[{owner, kind}];
         const auto c = ++n[was_refused ? 1 : 0];
         if (c == 1) {
