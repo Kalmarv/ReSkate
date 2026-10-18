@@ -423,7 +423,7 @@ void update_world_layers(std::uintptr_t manager, std::uint64_t now) {
             }
             if (diag_budget())
                 logging::log(logging::Level::info, logging::Channel::subworld, "TODDIAG t={} barrier for {} (loaded={}): old={}{}",
-                    now, seasonal_bundle(slot), state.loaded, old < targets.size() ? seasonal_bundle(old) : std::string("none"), siblings);
+                    now, seasonal_bundle(slot), state.loaded, old < targets.size() ? seasonal_bundle(static_cast<unsigned>(old)) : std::string("none"), siblings);
         }
         if (old < targets.size()) {
             status[slot] = "Waiting for the old time of day";
